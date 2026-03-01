@@ -6,7 +6,10 @@
 
 ## 🇨🇳 中文说明 (Chinese)
 
-**KLine Slicer** 是 KLine-Matrix-Suite 中的第三个核心组件，专门负责将 5 分钟的 K 线 CSV 文件转换为深度学习模型（如 **Kronos**）可以直接消化的张量数据。它不仅是一个切片工具，更是一个数据“质检员”。
+**KLine Slicer** 是 KLine-Kronos-Suite 中的第三个核心组件，专门负责将 5 分钟的 K 线 CSV 文件转换为深度学习模型（如 **Kronos**）可以直接消化的张量数据。它不仅是一个切片工具，更是一个数据“质检员”。
+
+## Acknowledgements
+Designed for integration with time-series forecasting foundation models like **Chronos** ([@amazon-science/chronos-forecasting](https://github.com/amazon-science/chronos-forecasting)).
 
 ### ✨ 核心功能
 - **[ 数据健康体检 (Health Check) ]**：自动检测原始 5m CSV 中的空值（NaN）、零成交量、以及异常时间缺口，确保进入模型的数据 100% 纯净。
