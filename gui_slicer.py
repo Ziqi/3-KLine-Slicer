@@ -1,5 +1,8 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
 import tkinter as tk
-from tkinter import ttk, filedialog, messagebox, scrolledtext, END, LEFT, BOTH, TOP, BOTTOM, RIGHT, X, Y, W, E, S, CENTER, WORD, DISABLED, NORMAL
+from tkinter import messagebox, filedialog
 import os
 import pandas as pd
 import numpy as np
@@ -10,20 +13,27 @@ import datetime
 import glob
 import re
 from pathlib import Path
-from sklearn.preprocessing import StandardScaler
-import ttkbootstrap as tb
+import ttkbootstrap as ttk
+from ttkbootstrap.constants import *
 
 # =================================================================
 # [ KLine-Slicer: DATA PRODUCTION TERMINAL ]
-# Designed for Kronos MoE (X-Matrix) Pipeline
+# Designed for Kronos Pipeline (DataFrame Packers)
 # =================================================================
 
-class SlicerMatrixGUI(tb.Window):
+class SlicerMatrixGUI(ttk.Window):
     def __init__(self):
         super().__init__(themename="cyborg")
-        self.title("全市场 K线数据切片生产终端 (5min ▷ Transformer)")
+        self.title("Kronos Slicer · 全市场数据打包终端")
         self.geometry("1100x860")
         self.minsize(1050, 800)
+
+        
+        try:
+            self.createcommand('::tk::mac::ReopenApplication', self.deiconify)
+        except Exception:
+            pass
+
         
         # --- UI Colors & Styles (Flat Dark Gold) ---
         self.c_bg = "#080808"        
@@ -42,25 +52,12 @@ class SlicerMatrixGUI(tb.Window):
         # --- Paths & State ---
         self.root_dir = Path(__file__).resolve().parent
         self.src_dir = self.root_dir.parent / "2-KLine-Resample" / "gui_out_5m"
-        self.expert_dir = Path("/Users/xiaoziqi/X-Matrix/data/processed")
         self.out_dir = self.root_dir / "gui_out_slices"
         
         if not self.out_dir.exists(): self.out_dir.mkdir(parents=True)
-        if not self.expert_dir.exists(): self.expert_dir.mkdir(parents=True)
         
         self.src_var = tk.StringVar(value=str(self.src_dir))
-        self.expert_var = tk.StringVar(value="expert_02_ai")
-        self.new_expert_name = tk.StringVar()
-        self.lookback_var = tk.IntVar(value=90)
-        self.pred_var = tk.IntVar(value=10)
-        
-        self.expert_options = {
-            "expert_01_chem": "新材料与化工",
-            "expert_02_ai": "AI与半导体",
-            "expert_03_robotics": "机器人与智造",
-            "expert_04_aerospace": "航天与军工",
-            "NEW_EXPERT": "[+] 训练全新大脑 (Create New Expert)"
-        }
+        self.dataset_name_var = tk.StringVar(value="my_dataset")
         
         self.stop_requested = False
         self.process_thread = None
@@ -75,8 +72,9 @@ class SlicerMatrixGUI(tb.Window):
         self.after(1000, self.poll_target_dir)
 
     def _setup_styles(self):
-        style = self.style
+        style = ttk.Style()
         style.configure(".", font=self.font_base, background=self.c_bg, foreground=self.c_fg)
+
         
         style.configure("FlatGold.TButton", font=self.font_base_lg, background=self.c_bg, foreground=self.c_gold, bordercolor=self.c_gold, borderwidth=1)
         style.map("FlatGold.TButton", background=[("active", "#1A140B")], foreground=[("active", "#FFD700")])
@@ -104,7 +102,8 @@ class SlicerMatrixGUI(tb.Window):
         # --- HEADER ---
         header_frame = tk.Frame(self, bg=self.c_bg, pady=15)
         header_frame.pack(fill=X, padx=20)
-        tk.Label(header_frame, text="X-MATRIX SLICER · 数据切片生产终端", font=self.font_title, fg=self.c_gold, bg=self.c_bg).pack(side=LEFT)
+        tk.Label(header_frame, text="KRONOS SLICER · 数据切片生产终端", font=self.font_title, fg=self.c_gold, bg=self.c_bg).pack(side=LEFT)
+
         self.status_sign = tk.Label(header_frame, text="系统就绪", font=("Menlo", 16, "bold"), fg=self.c_gold_dim, bg=self.c_bg)
         self.status_sign.pack(side=RIGHT, anchor=S)
 
@@ -127,34 +126,26 @@ class SlicerMatrixGUI(tb.Window):
         tk.Entry(src_fr, textvariable=self.src_var, font=self.font_log, bg=self.c_panel, fg=self.c_gold, relief="flat", highlightthickness=1, highlightbackground=self.c_gold_dim).pack(side=LEFT, fill=X, expand=True)
         ttk.Button(src_fr, text="打开", style="FlatGold.TButton", command=self.on_browse_src).pack(side=RIGHT, padx=(5,0))
         
-        # 2. Expert Config
-        param_lf = DashFrame(left_panel, title=" 专家参数 CONFIG ", bg_color=self.c_bg, fg_color=self.c_gold, dash_color=self.c_gold_dim, font=("Menlo", 15, "bold"))
+        # 2. Dataset Config
+        param_lf = DashFrame(left_panel, title=" 数据集参数 CONFIG ", bg_color=self.c_bg, fg_color=self.c_gold, dash_color=self.c_gold_dim, font=("Menlo", 15, "bold"))
         param_lf.pack(fill=X, pady=(0, 15))
         
-        tk.Label(param_lf.content, text="目标大脑 (Target Expert):", font=self.font_base, fg=self.c_fg, bg=self.c_bg).pack(anchor=W)
-        self.expert_combo = ttk.Combobox(param_lf.content, textvariable=self.expert_var, values=list(self.expert_options.keys()), font=self.font_base)
-        self.expert_combo.pack(fill=X, pady=(2, 10))
-        self.expert_combo.bind("<<ComboboxSelected>>", self._on_expert_change)
+        tk.Label(param_lf.content, text="数据集名称 (Dataset Name):", font=self.font_base, fg=self.c_fg, bg=self.c_bg).pack(anchor=W)
+        tk.Entry(param_lf.content, textvariable=self.dataset_name_var, font=self.font_log, bg=self.c_panel, fg=self.c_gold, relief="flat", highlightthickness=1, highlightbackground=self.c_gold_dim).pack(fill=X, pady=(4, 10))
         
-        # New Expert Name Entry (hidden by default)
-        self.new_exp_frame = tk.Frame(param_lf.content, bg=self.c_bg)
-        tk.Label(self.new_exp_frame, text="新专家代号:", font=self.font_base, fg=self.c_green, bg=self.c_bg).pack(side=LEFT)
-        tk.Entry(self.new_exp_frame, textvariable=self.new_expert_name, font=self.font_log, bg=self.c_panel, fg=self.c_green, relief="flat", highlightthickness=1, highlightbackground=self.c_green).pack(side=LEFT, fill=X, expand=True, padx=5)
-        
-        # Window Params
-        win_frame = tk.Frame(param_lf.content, bg=self.c_bg)
-        win_frame.pack(fill=X, pady=(10, 0))
-        tk.Label(win_frame, text="Lookback:", font=self.font_base, fg=self.c_gold, bg=self.c_bg).pack(side=LEFT)
-        tk.Entry(win_frame, textvariable=self.lookback_var, width=5, font=self.font_base, bg=self.c_panel, fg=self.c_fg, relief="flat").pack(side=LEFT, padx=5)
-        tk.Label(win_frame, text="Predict:", font=self.font_base, fg=self.c_gold, bg=self.c_bg).pack(side=LEFT)
-        tk.Entry(win_frame, textvariable=self.pred_var, width=5, font=self.font_base, bg=self.c_panel, fg=self.c_fg, relief="flat").pack(side=LEFT, padx=5)
+        # Info label explaining new logic
+        info_text = "Note: Kronos 模型会在训练时按需执行\n滑动切片和动态归一化。此处仅将清洗\n后的股票聚合为 .pkl 巨型字典字典包。"
+        tk.Label(param_lf.content, text=info_text, font=("Menlo", 12), fg=self.c_gold_dim, bg=self.c_bg, justify=LEFT).pack(anchor=W, pady=(5, 0))
 
         # 3. Action Controls
         ctrl_lf = DashFrame(left_panel, title=" 操作面板 ", bg_color=self.c_bg, fg_color=self.c_gold, dash_color=self.c_gold_dim, font=("Menlo", 15, "bold"))
         ctrl_lf.pack(fill=X, pady=(0, 15))
 
-        self.start_btn = ttk.Button(ctrl_lf.content, text="开始切片生产 (To Tensor)", style="FlatGold.TButton", command=self.on_start_click)
-        self.start_btn.pack(fill=X, pady=(15, 10), ipady=5)
+        self.check_btn = ttk.Button(ctrl_lf.content, text="[ 完整性复查 ]", style="FlatGold.TButton", command=self.on_integrity_check_click)
+        self.check_btn.pack(fill=X, pady=(10, 5), ipady=3)
+
+        self.start_btn = ttk.Button(ctrl_lf.content, text="开始打包 (To Dictionary .pkl)", style="FlatGold.TButton", command=self.on_start_click)
+        self.start_btn.pack(fill=X, pady=(5, 10), ipady=5)
         
         self.stop_btn = ttk.Button(ctrl_lf.content, text="熔断中止", style="FlatRed.TButton", command=self.on_stop, state=DISABLED)
         self.stop_btn.pack(fill=X, pady=(0, 5), ipady=5)
@@ -177,6 +168,7 @@ class SlicerMatrixGUI(tb.Window):
         self.log_widget.tag_config("sys", foreground=self.c_gold, font=("Menlo", 13, "bold"))
         self.log_widget.tag_config("succ", foreground=self.c_green, font=("Menlo", 13, "bold"))
         self.log_widget.tag_config("err", foreground=self.c_red, font=("Menlo", 13, "bold"))
+        self.log_widget.tag_config("warn", foreground="#FF9800", font=("Menlo", 13, "bold"))
         self.log_widget.configure(state=DISABLED)
 
         # --- RIGHT PANEL ---
@@ -190,18 +182,21 @@ class SlicerMatrixGUI(tb.Window):
         tb = tk.Frame(assets_lf.content, bg=self.c_bg)
         tb.pack(fill=X, pady=(0, 5))
         ttk.Button(tb, text="[ 全选 ]", style="FlatGold.TButton", command=self.on_select_all).pack(side=LEFT, padx=(0,5))
-        ttk.Button(tb, text="[ 取消 ]", style="FlatGold.TButton", command=self.on_unselect_all).pack(side=LEFT)
+        ttk.Button(tb, text="[ 取消 ]", style="FlatGold.TButton", command=self.on_unselect_all).pack(side=LEFT, padx=(0,5))
+        ttk.Button(tb, text="[ 批量物理删除 ]", style="FlatRed.TButton", command=self.on_batch_delete_src).pack(side=LEFT)
         
-        columns = ("name", "size", "health", "delete")
+        columns = ("name", "raw_name", "size", "health", "delete")
         src_container = tk.Frame(assets_lf.content, bg=self.c_bg)
         src_container.pack(fill=BOTH, expand=True)
         
         self.tree = ttk.Treeview(src_container, columns=columns, show="headings", selectmode="extended")
-        self.tree.heading("name", text="文件名称")
+        self.tree.heading("name", text="股票名称_代码")
+        self.tree.heading("raw_name", text="原始文件名")
         self.tree.heading("size", text="物理大小")
         self.tree.heading("health", text="数据体检")
         self.tree.heading("delete", text="[ 删除 ]")
-        self.tree.column("name", width=250, anchor=W)
+        self.tree.column("name", width=180, anchor=W)
+        self.tree.column("raw_name", width=300, anchor=W)
         self.tree.column("size", width=100, anchor=E)
         self.tree.column("health", width=120, anchor=CENTER)
         self.tree.column("delete", width=70, anchor=CENTER)
@@ -213,22 +208,22 @@ class SlicerMatrixGUI(tb.Window):
         self.tree.bind('<ButtonRelease-1>', self.on_src_tree_click)
 
         # 2. BOTTOM: Output Tensors
-        target_lf = DashFrame(right_panel, title=" 张量产出陈列室 (Tensors .npy) ", bg_color=self.c_bg, fg_color=self.c_green, dash_color=self.c_gold_dim, font=("Menlo", 15, "bold"))
+        target_lf = DashFrame(right_panel, title=" 巨型字典陈列室 (Dict .pkl) ", bg_color=self.c_bg, fg_color=self.c_green, dash_color=self.c_gold_dim, font=("Menlo", 15, "bold"))
         target_lf.pack(side=TOP, fill=BOTH, expand=True)
         
-        tgt_columns = ("name", "expert", "size", "time", "delete")
+        tgt_columns = ("name", "count", "size", "time", "delete")
         tgt_container = tk.Frame(target_lf.content, bg=self.c_bg)
         tgt_container.pack(fill=BOTH, expand=True)
         
         self.tgt_tree = ttk.Treeview(tgt_container, columns=tgt_columns, show="headings", selectmode="browse")
         self.tgt_tree.heading("name", text="文件名称")
-        self.tgt_tree.heading("expert", text="归属专家")
-        self.tgt_tree.heading("size", text="数组大小")
+        self.tgt_tree.heading("count", text="包含股票数")
+        self.tgt_tree.heading("size", text="物理大小")
         self.tgt_tree.heading("time", text="生成时间")
         self.tgt_tree.heading("delete", text="[ 删除 ]")
         
         self.tgt_tree.column("name", width=250, anchor=W)
-        self.tgt_tree.column("expert", width=120, anchor=CENTER)
+        self.tgt_tree.column("count", width=120, anchor=CENTER)
         self.tgt_tree.column("size", width=100, anchor=E)
         self.tgt_tree.column("time", width=150, anchor=CENTER)
         self.tgt_tree.column("delete", width=70, anchor=CENTER)
@@ -238,18 +233,11 @@ class SlicerMatrixGUI(tb.Window):
         tgt_yscroll.pack(side=RIGHT, fill=Y)
         self.tgt_tree.pack(side=LEFT, fill=BOTH, expand=True)
         self.tgt_tree.bind('<ButtonRelease-1>', self.on_tgt_tree_click)
+        self.tgt_tree.bind('<Double-1>', self.on_tgt_tree_double_click)
 
         # Footer
         self.status_bar = tk.Label(self, text="待命：准备生产数据", bg=self.c_bg, fg=self.c_gold_dim, font=("Menlo", 10))
         self.status_bar.pack(side=BOTTOM, anchor=W, padx=20, pady=(0, 5))
-
-    def _on_expert_change(self, event=None):
-        if self.expert_var.get() == "NEW_EXPERT":
-            self.new_exp_frame.pack(fill=X, pady=(2, 5))
-            self.expert_combo.config(foreground=self.c_green)
-        else:
-            self.new_exp_frame.pack_forget()
-            self.expert_combo.config(foreground=self.c_fg)
 
     def log_msg(self, msg, level="info"):
         self.log_widget.configure(state=NORMAL)
@@ -275,6 +263,7 @@ class SlicerMatrixGUI(tb.Window):
         p = Path(self.src_var.get())
         if not p.exists() or not p.is_dir(): return
         
+        current_selection = self.tree.selection()
         current_iids = self.tree.get_children()
         for iid in current_iids: self.tree.delete(iid)
         
@@ -282,9 +271,18 @@ class SlicerMatrixGUI(tb.Window):
         files = sorted(p.glob("*_5m_*.csv"), key=os.path.getmtime, reverse=True)
         for f in files:
             size_kb = f.stat().st_size / 1024.0
-            iid = self.tree.insert("", END, values=(f.name, f"{size_kb:.1f} KB", "待体检", "[ 删除 ]"))
+            # Simplify name: Name_Code
+            match = re.search(r"^(.*?)_(.*?)_5m", f.name)
+            if match:
+                disp_name = f"{match.group(1)}_{match.group(2)}"
+            else:
+                disp_name = f.name.split("_")[0]
+                
+            iid = self.tree.insert("", END, values=(disp_name, f.name, f"{size_kb:.1f} KB", "待体检", "[ 删除 ]"))
             self._file_mapping[iid] = f.name
-        self.on_select_all()
+            
+        if not current_selection:
+            self.on_select_all()
 
     def poll_target_dir(self):
         p = Path(self.out_dir)
@@ -294,25 +292,19 @@ class SlicerMatrixGUI(tb.Window):
         for iid in current_iids: self.tgt_tree.delete(iid)
         
         self._target_mapping = {}
-        files = sorted(p.glob("*.npy"), key=os.path.getmtime, reverse=True)
+        files = sorted(p.glob("*.pkl"), key=os.path.getmtime, reverse=True)
         for f in files:
             size_mb = f.stat().st_size / (1024.0 * 1024.0)
             time_str = datetime.datetime.fromtimestamp(f.stat().st_mtime).strftime("%Y-%m-%d %H:%M")
-            
-            # Extract expert from slices_EXPERT_ID_...
-            expert_match = re.search(r"slices_(.*?)_\d", f.name)
-            expert_name = expert_match.group(1) if expert_match else "Unknown"
-            
-            iid = self.tgt_tree.insert("", END, values=(f.name, expert_name, f"{size_mb:.1f} MB", time_str, "[ 删除 ]"))
+            count_str = "Packed"
+            iid = self.tgt_tree.insert("", END, values=(f.name, count_str, f"{size_mb:.1f} MB", time_str, "[ 删除 ]"))
             self._target_mapping[iid] = f.name
-        
-        # Poll again in 5 seconds
         self.after(5000, self.poll_target_dir)
 
     def on_src_tree_click(self, event):
         item_id = self.tree.identify_row(event.y)
         column = self.tree.identify_column(event.x)
-        if not item_id or column != "#4": return
+        if not item_id or column != "#5": return
         
         filename = self._file_mapping.get(item_id)
         if messagebox.askyesno("机密操作", f"确定要永久粉碎源文件 {filename} 吗？"):
@@ -323,19 +315,86 @@ class SlicerMatrixGUI(tb.Window):
             except Exception as e:
                 messagebox.showerror("中断", f"粉碎失败: {e}")
 
+    def on_batch_delete_src(self):
+        selection = self.tree.selection()
+        if not selection:
+            messagebox.showwarning("提示", "请先选定要销毁的标的。")
+            return
+            
+        if not messagebox.askyesno("机密操作", f"确定要永久粉碎选中的 {len(selection)} 个源文件吗？"):
+            return
+            
+        success_count = 0
+        for iid in selection:
+            filename = self._file_mapping.get(iid)
+            try:
+                os.remove(Path(self.src_var.get()) / filename)
+                self.tree.delete(iid)
+                success_count += 1
+            except: pass
+        
+        self.log_msg(f"[!] 批量粉碎任务完成: 成功清理 {success_count} 个物理标的。", "warn")
+
     def on_tgt_tree_click(self, event):
         item_id = self.tgt_tree.identify_row(event.y)
         column = self.tgt_tree.identify_column(event.x)
         if not item_id or column != "#5": return
         
         filename = self._target_mapping.get(item_id)
-        if messagebox.askyesno("机密操作", f"确定要销毁该张量产出 {filename} 吗？"):
+        if not filename: return
+
+        # Handle Delete (#5)
+        if messagebox.askyesno("机密操作", f"确定要销毁该产出 {filename} 吗？"):
             try:
                 os.remove(self.out_dir / filename)
                 self.tgt_tree.delete(item_id)
-                self.log_msg(f"[*] 已移除产出张量: {filename}", "sys")
+                self.log_msg(f"[*] 已移除产出包: {filename}", "sys")
             except Exception as e:
                 messagebox.showerror("中断", f"销毁失败: {e}")
+
+    def on_tgt_tree_double_click(self, event):
+        item_id = self.tgt_tree.identify_row(event.y)
+        column = self.tgt_tree.identify_column(event.x)
+        if not item_id or column == "#5": return
+        
+        filename = self._target_mapping.get(item_id)
+        if not filename: return
+        
+        try:
+            # On macOS, use 'open' to reveal the folder
+            os.system(f'open "{self.out_dir}"')
+            self.log_msg(f"[*] 已打开目标输出目录: {self.out_dir}", "info")
+        except Exception as e:
+            self.log_msg(f"[-] 无法打开目录: {e}", "err")
+
+    def on_integrity_check_click(self):
+        selection = self.tree.selection()
+        if not selection:
+            messagebox.showwarning("提示", "请先勾选需要检查的标的。")
+            return
+            
+        self.log_msg(f"[*] 启动深度完整性复查 (共 {len(selection)} 项)...", "sys")
+        threading.Thread(target=self._run_integrity_check, args=(selection,), daemon=True).start()
+
+    def _run_integrity_check(self, selection):
+        required = ['timestamps', 'open', 'high', 'low', 'close', 'volume', 'amount']
+        for iid in selection:
+            fname = self._file_mapping.get(iid)
+            fpath = Path(self.src_var.get()) / fname
+            try:
+                df = pd.read_csv(fpath)
+                status = "检测通过"
+                if not all(col in df.columns for col in required):
+                    status = "[x] 缺列"
+                elif df.isnull().values.any():
+                    status = "[x] 空值"
+                elif len(df) < 10:
+                    status = "[x] 数据过短"
+                
+                self.after(0, lambda i=iid, s=status: self.tree.item(i, values=(self.tree.item(i)['values'][0], self.tree.item(i)['values'][1], self.tree.item(i)['values'][2], s, "[ 删除 ]")))
+            except:
+                self.after(0, lambda i=iid: self.tree.item(i, values=(self.tree.item(i)['values'][0], self.tree.item(i)['values'][1], self.tree.item(i)['values'][2], "[x] 毁损", "[ 删除 ]")))
+        self.log_msg("[+] 完整性复查完毕，请根据状态剔除异常标的。", "succ")
 
     def on_start_click(self):
         if self.process_thread and self.process_thread.is_alive(): return
@@ -345,104 +404,84 @@ class SlicerMatrixGUI(tb.Window):
             messagebox.showwarning("提示", "请先在资产库中勾选需要加工的标的。")
             return
             
-        # Check Expert
-        expert_id = self.expert_var.get()
-        if expert_id == "NEW_EXPERT":
-            new_name = self.new_expert_name.get().strip()
-            if not new_name:
-                messagebox.showerror("错误", "请指定新专家的代号！")
-                return
-            expert_id = new_name
+        dataset_name = self.dataset_name_var.get().strip()
+        if not dataset_name:
+            messagebox.showerror("错误", "请指定数据集名称！")
+            return
             
         self.stop_requested = False
         self.start_btn.config(state=DISABLED)
         self.stop_btn.config(state=NORMAL)
-        self.status_sign.config(text="切片生产中...", fg=self.c_gold)
+        self.status_sign.config(text="打包生产中...", fg=self.c_gold)
         
-        self.process_thread = threading.Thread(target=self._run_slicing_batch, args=(selection, expert_id), daemon=True)
+        self.process_thread = threading.Thread(target=self._run_slicing_batch, args=(selection, dataset_name), daemon=True)
         self.process_thread.start()
 
     def on_stop(self):
         self.stop_requested = True
         self.log_msg("[!] 熔断指令下达，正在尝试平滑停机...", "err")
 
-    def _run_slicing_batch(self, selection, expert_id):
-        is_new_expert = self.expert_var.get() == "NEW_EXPERT"
-        self.log_msg(f"[*] 启动切片生产流水线 ({expert_id})...", "sys")
+    def _run_slicing_batch(self, selection, dataset_name):
+        self.log_msg(f"[*] 启动打包流水线: 目标格式字典 `.pkl` ({dataset_name})...", "sys")
         
-        scaler_path = self.expert_dir / f"scaler_{expert_id}.pkl"
-        scaler = None
-        
-        # 1. Scaler Handling
-        if not is_new_expert and scaler_path.exists():
-            try:
-                with open(scaler_path, 'rb') as f: scaler = pickle.load(f)
-                self.log_msg(f"[+] 挂载已有专家密钥: {scaler_path.name}", "succ")
-            except:
-                self.log_msg(f"[-] 密钥解析失败，启用自适应拟合。", "err")
-        elif is_new_expert:
-            self.log_msg(f"[*] 模式：训练全新大脑。将从本次数据中拟合新密钥。", "sys")
-
-        lookback = self.lookback_var.get()
-        pred = self.pred_var.get()
-        all_slices = []
-        raw_data_for_scaler = [] # Only used if fitting new scaler
+        kronos_dict = {}
+        success_ct = 0
         
         for i, iid in enumerate(selection):
             if self.stop_requested: break
             fname = self._file_mapping.get(iid)
             fpath = Path(self.src_var.get()) / fname
             
-            self.tree.item(iid, values=(self.tree.item(iid)['values'][0], self.tree.item(iid)['values'][1], "读取中", "[ 删除 ]"))
+            # Skip if status is already error
+            current_status = self.tree.item(iid)['values'][3]
+            if "[x]" in current_status:
+                self.log_msg(f"[-] 跳过异常标点: {fname} (状态: {current_status})", "warn")
+                continue
+
             try:
+                # Extract stock code
+                match = re.search(r"_(.*?)_5m", fname)
+                symbol = match.group(1) if match else fname.split("_")[0]
+                
                 df = pd.read_csv(fpath)
-                # Quick health check
-                if df.isnull().values.any():
-                    self.tree.item(iid, values=(self.tree.item(iid)['values'][0], self.tree.item(iid)['values'][1], "[x] 毁损", "[ 删除 ]"))
+                
+                # Double check columns (case insensitive renaming for Kronos)
+                df.columns = [c.lower() for c in df.columns]
+                rename_map = {'timestamps': 'datetime', 'volume': 'vol', 'amount': 'amt'}
+                # Adjust for potential variations
+                for k, v in rename_map.items():
+                    if k in df.columns: df.rename(columns={k: v}, inplace=True)
+                
+                if 'datetime' not in df.columns:
+                    self.log_msg(f"[-] 跳过 {fname}: 缺少时间戳列", "err")
+                    continue
+                    
+                df['datetime'] = pd.to_datetime(df['datetime'])
+                df.set_index('datetime', inplace=True)
+                
+                # Keep required OHLCVA
+                cols = ['open', 'high', 'low', 'close', 'vol', 'amt']
+                if not all(col in df.columns for col in cols):
+                    self.log_msg(f"[-] 跳过 {fname}: 缺少 OHLCVA 必要列", "err")
                     continue
                 
-                features = ['open', 'high', 'low', 'close', 'volume', 'amount']
-                data = df[features].values
+                df_clean = df[cols].copy()
+                kronos_dict[symbol] = df_clean
+                success_ct += 1
                 
-                if is_new_expert:
-                    raw_data_for_scaler.append(data)
-                
-                # We defer scaling until we processed all files if fitting new expert
-                if not is_new_expert:
-                    data_scaled = scaler.transform(data) if scaler else StandardScaler().fit_transform(data)
-                    seq_len = lookback + pred
-                    if len(data_scaled) >= seq_len:
-                        for idx in range(len(data_scaled) - seq_len + 1):
-                            all_slices.append(data_scaled[idx : idx + seq_len])
-                
-                self.tree.item(iid, values=(self.tree.item(iid)['values'][0], self.tree.item(iid)['values'][1], "检测通过", "[ 删除 ]"))
+                if success_ct % 10 == 0:
+                    self.log_msg(f"[*] 已注入 {success_ct} 支股票数据...")
             except Exception as e:
                 self.log_msg(f"[-] 致命错误 {fname}: {str(e)}", "err")
 
-        # 2. Logic for New Expert
-        if is_new_expert and raw_data_for_scaler:
-            self.log_msg(f"[*] 正在为新专家 [{expert_id}] 计算归一化特征...", "sys")
-            all_raw = np.concatenate(raw_data_for_scaler, axis=0)
-            scaler = StandardScaler()
-            scaler.fit(all_raw)
-            with open(scaler_path, 'wb') as f: pickle.dump(scaler, f)
-            self.log_msg(f"[+] 新专家密钥已存盘: {scaler_path.name}", "succ")
-            
-            # Now slice with the newly fitted scaler
-            for i, data in enumerate(raw_data_for_scaler):
-                data_scaled = scaler.transform(data)
-                seq_len = lookback + pred
-                if len(data_scaled) >= seq_len:
-                    for idx in range(len(data_scaled) - seq_len + 1):
-                        all_slices.append(data_scaled[idx : idx + seq_len])
-
         # 3. Finalize Save
-        if not self.stop_requested and all_slices:
-            final_arr = np.array(all_slices).astype(np.float32)
-            out_file = f"slices_{expert_id}_{datetime.datetime.now().strftime('%m%d_%H%M')}.npy"
-            np.save(self.out_dir / out_file, final_arr)
-            self.log_msg(f"[+] 生产大功告成！生成条目: {len(all_slices)} 条", "succ")
-            self.status_sign.config(text="生产完成", fg=self.c_green)
+        if not self.stop_requested and kronos_dict:
+            out_file = f"kronos_dataset_{dataset_name}_{datetime.datetime.now().strftime('%m%d_%H%M')}.pkl"
+            with open(self.out_dir / out_file, "wb") as f:
+                pickle.dump(kronos_dict, f)
+                
+            self.log_msg(f"[+] 生产大功告成！巨型字典共打包股票数: {len(kronos_dict)} 支", "succ")
+            self.status_sign.config(text="打包完成", fg=self.c_green)
             self.poll_target_dir()
         else:
             self.status_sign.config(text="系统就绪", fg=self.c_gold_dim)
@@ -472,5 +511,13 @@ class DashFrame(tk.Frame):
         self.canvas.create_text(20, 10, text=self.title_text, anchor="nw", font=self.font, fill=self.fg_color)
 
 if __name__ == "__main__":
-    app = SlicerMatrixGUI()
-    app.mainloop()
+    try:
+        app = SlicerMatrixGUI()
+        app.mainloop()
+    except Exception as e:
+        print(f"\n[致命错误] 程序启动失败:")
+        import traceback
+        traceback.print_exc()
+        input("\n按回车键退出 (Wait for input)...")
+
+
