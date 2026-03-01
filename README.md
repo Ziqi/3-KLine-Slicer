@@ -18,6 +18,15 @@
 2. **专家选择**：根据你要投喂的“大脑”选择对应的专家编号（如 `expert_02_ai`）。
 3. **点火生产**：点击“开始切片生产”，生成的 `.npy` 数据包将存放于 `gui_out_slices` 目录下，可直接复制到服务器进行训练。
 
+### 📊 数据接口规范 (Data IO Specs)
+- **注入流 (Input)**:
+  - 数据实体: `2-KLine-Resample` 提取的 `5m.csv` 时序合集。
+  - 模型预设: `X-Matrix` 模型框架依赖的独家 `scaler_*.pkl` 均值方差归一化密钥文件。
+- **输出张量 (Output)**: 完全符合高维模型特征张量接口规则的 `.npy` Numpy 三维数组。
+  - **数组命名规范**: `slices_[expert_id]_[生成时间戳].npy`
+  - **张量维度 (Shape)**: `(样本条目数 N, 回望窗口 Lookback + 预测视野 Predict, 特征通道数 Features)`
+- **工程设计哲学 (Why Tensor Slice?)**: 摒弃传统项目一边在 DataLoader 训练、一边动态切片的 CPU 密集型灾难开销。通过 Slicer 直接将数千份物理 `.csv` 并发组装成紧凑的内存块连续 Numpy 矩阵，使得核心 Transformer 网络训练流能够达到最大吞吐满载。
+
 ---
 
 ## 🇺🇸 English Documentation
